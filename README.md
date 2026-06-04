@@ -21,12 +21,17 @@ the response back to that same caller.
 
 - **controller** — an agent / MCP-server side that issues commands (one per session).
 - **resource** — the controllable thing (a browser extension), executes commands.
+- **observer** — read-only: live roster + audit stream (powers `status` and dashboards).
 - **broker** — the only WebSocket *server*; everyone else is a client. Owns the
   port, holds the roster, arbitrates control.
 
 Resources are **exclusive** (only the selected controller may drive — safe for a
 logged-in browser) or **concurrent** (any controller may drive; disambiguated by
 `scope`, e.g. a tab id — for parallel work).
+
+The broker also supports an `authorize` hook for per-controller **capability
+scoping** (read-only controllers, action allow-lists) and emits an **audit
+stream** of every command/denial/lease change. See [`PROTOCOL.md`](./PROTOCOL.md).
 
 See [`PROTOCOL.md`](./PROTOCOL.md) for the wire format.
 
@@ -43,6 +48,22 @@ npm run example  # narrated two-session demo (no browser needed)
 ```bash
 npm run broker            # or: npx mcp-resource-broker
 BROKER_PORT=9000 npm run broker
+```
+
+### Inspect what's connected
+
+```bash
+mcp-resource-broker status            # one-shot: resources, controllers, active holder
+mcp-resource-broker status --watch    # live: roster changes + audit events
+mcp-resource-broker status --url ws://127.0.0.1:9000
+```
+
+```
+resources:
+  browser  [exclusive]  holder: ctrl-2
+controllers:
+    ctrl-1  "session-A"
+  * ctrl-2  "session-B"  <- active
 ```
 
 Or auto-spawn it from your controller so it outlives any single session (a
@@ -92,10 +113,11 @@ A Node resource can use `BrokerClient` with `role: 'resource'` (see the test).
 
 ## Status
 
-`0.1.0` — functional core: routing, exclusive/concurrent modes, leases,
-selection, roster, auto-reselect, **lease TTL via heartbeat**, localhost auth
-hook, and TypeScript types. Still pre-1.0: no observer/audit stream, no
-capability scoping, no non-localhost hardening. See the roadmap in `PROTOCOL.md`.
+`0.1.0` — routing, exclusive/concurrent modes, leases, selection, roster,
+auto-reselect, lease TTL via heartbeat, observer role + `status` CLI, capability
+scoping (`authorize`), audit stream, localhost auth hook, and TypeScript types.
+Still pre-1.0: lease resumption across reconnects and non-localhost transport
+hardening are on the roadmap (see `PROTOCOL.md`).
 
 ## Support
 

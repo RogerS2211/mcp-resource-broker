@@ -26,6 +26,7 @@
   },
   "scripts": {
     "broker": "node bin/broker.js",
+    "status": "node bin/broker.js status",
     "test": "node test/broker.test.mjs",
     "example": "node examples/echo-demo.mjs"
   },
