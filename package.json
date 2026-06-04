@@ -1,0 +1,31 @@
+{
+  "name": "mcp-resource-broker",
+  "version": "0.1.0",
+  "description": "A connection broker that lets many AI/agent sessions safely share one stateful resource (e.g. a browser extension) with active-instance arbitration. The multi-controller layer that browser-MCP tools are missing.",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "mcp-resource-broker": "bin/broker.js"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./broker": "./src/broker.js",
+    "./node-client": "./src/node-client.js",
+    "./extension-client": "./src/extension-client.js",
+    "./protocol": "./src/protocol.js"
+  },
+  "scripts": {
+    "broker": "node bin/broker.js",
+    "test": "node test/broker.test.mjs",
+    "example": "node examples/echo-demo.mjs"
+  },
+  "keywords": ["mcp", "broker", "websocket", "browser-extension", "multi-agent", "arbitration"],
+  "funding": [
+    { "type": "ko-fi", "url": "https://ko-fi.com/rog3rs2211" },
+    { "type": "buymeacoffee", "url": "https://buymeacoffee.com/rog3rs2211" }
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
