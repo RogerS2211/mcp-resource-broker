@@ -103,9 +103,18 @@ A resource renders its picker from `roster.controllers` + `roster.holders` and
 calls `select` when the user chooses — exactly the popup flow in the reference
 extension.
 
+## Liveness & lease TTL
+
+Independently of the application-level `ping`/`pong` above, the broker sends a
+**WebSocket-protocol ping** to every client every `heartbeatMs` (default 15s).
+Clients auto-reply with a pong at the transport layer — `ws` and browser
+`WebSocket` both do this automatically, so no client code is required. A socket
+that misses a ping is terminated; if it held an exclusive lease, the lease is
+freed and reassigned. This bounds how long a hung or sleeping controller can
+hold a resource to roughly one heartbeat interval.
+
 ## Not in v1 (roadmap)
 
-- Lease TTL + heartbeat-driven auto-expiry (currently expires on disconnect only).
 - Observer role and a metrics/audit stream.
 - Per-controller capability scoping (read-only, allowed actions/domains) enforced
   broker-side.

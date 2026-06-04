@@ -4,22 +4,40 @@
   "description": "A connection broker that lets many AI/agent sessions safely share one stateful resource (e.g. a browser extension) with active-instance arbitration. The multi-controller layer that browser-MCP tools are missing.",
   "type": "module",
   "main": "src/index.js",
+  "types": "src/index.d.ts",
   "bin": {
     "mcp-resource-broker": "bin/broker.js"
   },
   "exports": {
-    ".": "./src/index.js",
-    "./broker": "./src/broker.js",
-    "./node-client": "./src/node-client.js",
-    "./extension-client": "./src/extension-client.js",
-    "./protocol": "./src/protocol.js"
+    ".": { "types": "./src/index.d.ts", "import": "./src/index.js" },
+    "./broker": { "types": "./src/broker.d.ts", "import": "./src/broker.js" },
+    "./node-client": { "types": "./src/node-client.d.ts", "import": "./src/node-client.js" },
+    "./extension-client": { "types": "./src/extension-client.d.ts", "import": "./src/extension-client.js" },
+    "./protocol": { "types": "./src/protocol.d.ts", "import": "./src/protocol.js" }
+  },
+  "files": [
+    "src",
+    "bin",
+    "PROTOCOL.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=18"
   },
   "scripts": {
     "broker": "node bin/broker.js",
     "test": "node test/broker.test.mjs",
     "example": "node examples/echo-demo.mjs"
   },
-  "keywords": ["mcp", "broker", "websocket", "browser-extension", "multi-agent", "arbitration"],
+  "keywords": ["mcp", "model-context-protocol", "broker", "websocket", "browser-extension", "multi-agent", "arbitration", "agents"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RogerS2211/mcp-resource-broker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RogerS2211/mcp-resource-broker/issues"
+  },
+  "homepage": "https://github.com/RogerS2211/mcp-resource-broker#readme",
   "funding": [
     { "type": "ko-fi", "url": "https://ko-fi.com/rog3rs2211" },
     { "type": "buymeacoffee", "url": "https://buymeacoffee.com/rog3rs2211" }

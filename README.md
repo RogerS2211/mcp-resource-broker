@@ -1,5 +1,9 @@
 # mcp-resource-broker
 
+[![npm version](https://img.shields.io/npm/v/mcp-resource-broker.svg)](https://www.npmjs.com/package/mcp-resource-broker)
+[![CI](https://github.com/RogerS2211/mcp-resource-broker/actions/workflows/ci.yml/badge.svg)](https://github.com/RogerS2211/mcp-resource-broker/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 **Let many AI/agent sessions safely share one stateful resource — with active-instance arbitration instead of collisions.**
 
 Most browser-MCP tools (Browser MCP, mcp-chrome, browser-control-mcp, even
@@ -89,9 +93,9 @@ A Node resource can use `BrokerClient` with `role: 'resource'` (see the test).
 ## Status
 
 `0.1.0` — functional core: routing, exclusive/concurrent modes, leases,
-selection, roster, auto-reselect, localhost auth hook. **Not yet** production:
-no lease TTL/heartbeat, no observer/audit stream, no capability scoping, no
-non-localhost hardening. See the roadmap in `PROTOCOL.md`.
+selection, roster, auto-reselect, **lease TTL via heartbeat**, localhost auth
+hook, and TypeScript types. Still pre-1.0: no observer/audit stream, no
+capability scoping, no non-localhost hardening. See the roadmap in `PROTOCOL.md`.
 
 ## Support
 

@@ -73,6 +73,26 @@ try {
     ok(!r5.ok && /no such resource/i.test(r5.error), 'command to unknown resource errors cleanly');
 
     b.close(); browser.close(); tabs.close();
+
+    // 9. Lease TTL via heartbeat: a hung holder (socket stops answering pings)
+    //    is detected, terminated, and its lease reassigned. Isolated broker with
+    //    a fast heartbeat so the test stays quick.
+    const broker2 = createBroker({ port: 8803, heartbeatMs: 120, logger: () => {} });
+    await sleep(150);
+    const hbRes = new BrokerClient({ url: 'ws://127.0.0.1:8803', role: 'resource', name: 'hb', mode: 'exclusive' });
+    hbRes.onCommand(async () => ({ ok: true }));
+    await hbRes.connect();
+    const hung = new BrokerClient({ url: 'ws://127.0.0.1:8803', role: 'controller', label: 'hung', autoReconnect: false });
+    const live = new BrokerClient({ url: 'ws://127.0.0.1:8803', role: 'controller', label: 'live' });
+    await hung.connect();
+    await live.connect();
+    await sleep(120);
+    ok(broker2.state().holders.hb === hung.assignedId, 'heartbeat: first controller holds the lease');
+    hung.ws.pause(); // simulate a hung process — socket stops replying to pings
+    await sleep(700); // several heartbeat cycles
+    ok(broker2.state().holders.hb === live.assignedId, 'heartbeat: hung holder dropped, lease reassigned to live controller');
+    live.close(); hbRes.close();
+    await broker2.close();
 } catch (e) {
     failures++;
     console.error('Harness error:', e);

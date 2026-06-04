@@ -25,7 +25,8 @@ export function createBroker(opts = {}) {
         authenticate = async ({ remoteAddress }) => isLocalhost(remoteAddress),
         defaultMode = MODES.EXCLUSIVE,
         logger = (...a) => console.error('[broker]', ...a),
-        exitOnPortInUse = false
+        exitOnPortInUse = false,
+        heartbeatMs = 15000
     } = opts;
 
     const resources = new Map();   // name -> { ws, name, mode, meta }
@@ -45,6 +46,19 @@ export function createBroker(opts = {}) {
             logger('server error:', e.message);
         }
     });
+
+    // Liveness: terminate sockets that stop answering WebSocket pings. When a
+    // terminated socket is a lease holder, its 'close' handler frees and
+    // reassigns the lease — so a hung or sleeping controller can't hold a
+    // resource forever. ws auto-replies to pings, so clients need no extra code.
+    const heartbeat = heartbeatMs > 0 ? setInterval(() => {
+        for (const ws of wss.clients) {
+            if (ws.isAlive === false) { try { ws.terminate(); } catch {} continue; }
+            ws.isAlive = false;
+            try { ws.ping(); } catch {}
+        }
+    }, heartbeatMs) : null;
+    if (heartbeat && typeof heartbeat.unref === 'function') heartbeat.unref();
 
     const safeSend = (ws, data) => {
         try { if (ws && ws.readyState === ws.OPEN) ws.send(typeof data === 'string' ? data : JSON.stringify(data)); }
@@ -86,6 +100,8 @@ export function createBroker(opts = {}) {
     wss.on('connection', (ws, req) => {
         const remoteAddress = req.socket.remoteAddress;
         ws._role = null; ws._id = null; ws._resourceName = null;
+        ws.isAlive = true;
+        ws.on('pong', () => { ws.isAlive = true; });
         ws.on('message', (data) => {
             let msg; try { msg = JSON.parse(data.toString()); } catch { return; }
             handle(ws, msg, remoteAddress).catch(e => logger('handler error:', e.message));
@@ -207,6 +223,7 @@ export function createBroker(opts = {}) {
             holders: Object.fromEntries(holders)
         }),
         close: () => new Promise((res) => {
+            if (heartbeat) clearInterval(heartbeat);
             for (const c of controllers.values()) { try { c.ws.terminate(); } catch {} }
             for (const r of resources.values()) { try { r.ws.terminate(); } catch {} }
             wss.close(() => res());
