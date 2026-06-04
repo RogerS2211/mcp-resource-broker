@@ -1,4 +1,5 @@
 import type { Role, Mode } from './protocol.js';
+import type { AuditEvent } from './broker.js';
 
 export interface BrokerClientOptions {
     /** Broker URL (default: ws://127.0.0.1:8765). */
@@ -80,6 +81,8 @@ export class BrokerClient {
     onCommand(fn: (cmd: IncomingCommand) => CommandHandlerResult | Promise<CommandHandlerResult>): this;
     /** Subscribe to roster updates. */
     onRoster(fn: (roster: Roster) => void): this;
+    /** Subscribe to audit events (observer role). */
+    onAudit(fn: (event: AuditEvent) => void): this;
 
     connect(): Promise<this>;
 

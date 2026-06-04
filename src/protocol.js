@@ -1,8 +1,9 @@
 // Wire protocol for the MCP resource broker.
 //
-// Two participant roles connect to the broker over WebSocket:
+// Participant roles connect to the broker over WebSocket:
 //   - controller : an agent / MCP-server side that issues commands
 //   - resource   : the thing being controlled (e.g. a browser extension)
+//   - observer   : read-only — receives roster + audit events, may send `select`
 //
 // A controller's command is routed to the target resource; the resource's
 // result is routed back to the originating controller. For EXCLUSIVE resources
@@ -31,6 +32,7 @@ export const T = Object.freeze({
     // roster / liveness
     GET_ROSTER: 'get_roster',
     ROSTER: 'roster',       // <- broker  { resources[], controllers[], holders{} }
+    AUDIT: 'audit',         // <- broker (observers)  { event: { ts, type, ... } }
     PING: 'ping',
     PONG: 'pong'
 });

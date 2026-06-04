@@ -7,13 +7,40 @@ export interface AuthInfo {
     remoteAddress?: string;
 }
 
+export interface AuthorizeInfo {
+    controllerId: string;
+    action: string;
+    resource: string;
+    params?: unknown;
+    meta?: Record<string, unknown>;
+}
+
+export interface AuditEvent {
+    ts: number;
+    type: 'connect' | 'disconnect' | 'command' | 'denied' | 'lease';
+    role?: Role;
+    id?: string;
+    label?: string;
+    controller?: string;
+    resource?: string;
+    action?: string;
+    scope?: unknown;
+    holder?: string | null;
+    reason?: string;
+    via?: string;
+}
+
 export interface BrokerOptions {
     /** Listen port (default: env BROKER_PORT or 8765). */
     port?: number;
     /** Bind host (default: 127.0.0.1). */
     host?: string;
-    /** Auth gate for every connection. Default: accept localhost only. */
+    /** Connection gate. Default: accept localhost only. */
     authenticate?: (info: AuthInfo) => boolean | Promise<boolean>;
+    /** Per-command capability gate (read-only controllers, allow-lists). Default: allow all. */
+    authorize?: (info: AuthorizeInfo) => boolean | Promise<boolean>;
+    /** Receives an audit event for every command, denial, lease change, connect/disconnect. */
+    onAudit?: (event: AuditEvent) => void;
     /** Mode for resources that don't declare one (default: 'exclusive'). */
     defaultMode?: Mode;
     /** Log sink (default: console.error). */

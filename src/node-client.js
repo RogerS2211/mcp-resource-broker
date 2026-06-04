@@ -26,12 +26,14 @@ export class BrokerClient {
         this._seq = 1;
         this._onCommand = null;
         this._onRoster = null;
+        this._onAudit = null;
         this._reconnect = autoReconnect;
         this._delay = 500;
     }
 
     onCommand(fn) { this._onCommand = fn; return this; }
     onRoster(fn) { this._onRoster = fn; return this; }
+    onAudit(fn) { this._onAudit = fn; return this; }
 
     connect() {
         return new Promise((resolve, reject) => {
@@ -69,6 +71,7 @@ export class BrokerClient {
 
     async _handle(msg) {
         if (msg.type === T.ROSTER) { this.roster = msg; this._onRoster?.(msg); return; }
+        if (msg.type === T.AUDIT) { this._onAudit?.(msg.event); return; }
         if (msg.type === T.RESULT) {
             const p = this._pending.get(msg.id);
             if (p) { this._pending.delete(msg.id); clearTimeout(p.timer); p.resolve(msg); }

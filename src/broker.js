@@ -13,16 +13,21 @@ import { T, MODES, isLocalhost, PROTOCOL_VERSION } from './protocol.js';
  * @param {object} opts
  * @param {number} [opts.port]            Listen port (default env BROKER_PORT or 8765)
  * @param {string} [opts.host]            Bind host (default 127.0.0.1)
- * @param {function} [opts.authenticate]  async ({role, token, meta, remoteAddress}) => boolean
+ * @param {function} [opts.authenticate]  async ({role, token, meta, remoteAddress}) => boolean — connection gate
+ * @param {function} [opts.authorize]     async ({controllerId, action, resource, params, meta}) => boolean — per-command gate
+ * @param {function} [opts.onAudit]       (event) => void — receives an audit event for every command/denial/lease change
  * @param {string} [opts.defaultMode]     'exclusive' | 'concurrent' for resources that don't declare one
  * @param {function} [opts.logger]        (...args) => void
  * @param {boolean} [opts.exitOnPortInUse] process.exit(0) on EADDRINUSE (for auto-spawn pattern)
+ * @param {number} [opts.heartbeatMs]     ping interval; sockets missing a ping are dropped (0 disables)
  */
 export function createBroker(opts = {}) {
     const {
         port = parseInt(process.env.BROKER_PORT || '8765', 10),
         host = '127.0.0.1',
         authenticate = async ({ remoteAddress }) => isLocalhost(remoteAddress),
+        authorize = async () => true,
+        onAudit = null,
         defaultMode = MODES.EXCLUSIVE,
         logger = (...a) => console.error('[broker]', ...a),
         exitOnPortInUse = false,
@@ -31,6 +36,7 @@ export function createBroker(opts = {}) {
 
     const resources = new Map();   // name -> { ws, name, mode, meta }
     const controllers = new Map(); // id   -> { ws, id, label, meta, order }
+    const observers = new Set();   // ws (read-only roster + audit subscribers)
     const holders = new Map();     // resourceName -> controllerId | null  (exclusive selection)
     const pending = new Map();     // routingId -> { ctrlWs, origId }
     let ridSeq = 1;
@@ -77,6 +83,17 @@ export function createBroker(opts = {}) {
     function broadcastRoster() {
         const p = JSON.stringify(rosterPayload());
         for (const r of resources.values()) safeSend(r.ws, p);
+        for (const o of observers) safeSend(o, p);
+    }
+
+    // Emit an audit event to the onAudit callback and any connected observers.
+    function audit(event) {
+        const ev = { ts: Date.now(), ...event };
+        if (onAudit) { try { onAudit(ev); } catch { /* ignore */ } }
+        if (observers.size) {
+            const p = JSON.stringify({ type: T.AUDIT, event: ev });
+            for (const o of observers) safeSend(o, p);
+        }
     }
 
     // Ensure an exclusive resource has a valid holder: if none, auto-select the
@@ -121,10 +138,17 @@ export function createBroker(opts = {}) {
                 ws._role = 'resource'; ws._resourceName = name;
                 resources.set(name, { ws, name, mode: msg.mode || defaultMode, meta: msg.meta || {} });
                 ensureHolder(name);
-                safeSend(ws, { type: T.WELCOME, protocol: PROTOCOL_VERSION, assignedId: name, role: 'resource', features: ['exclusive', 'concurrent', 'leases'] });
+                safeSend(ws, { type: T.WELCOME, protocol: PROTOCOL_VERSION, assignedId: name, role: 'resource', features: ['exclusive', 'concurrent', 'leases', 'observer', 'audit'] });
                 safeSend(ws, rosterPayload());
                 broadcastRoster();
+                audit({ type: 'connect', role: 'resource', id: name });
                 logger(`resource registered: "${name}" (${msg.mode || defaultMode})`);
+            } else if (msg.role === 'observer') {
+                ws._role = 'observer';
+                observers.add(ws);
+                safeSend(ws, { type: T.WELCOME, protocol: PROTOCOL_VERSION, assignedId: null, role: 'observer', features: ['observer', 'audit'] });
+                safeSend(ws, rosterPayload());
+                logger('observer connected');
             } else {
                 const id = msg.id || `ctrl-${orderSeq}`;
                 ws._role = 'controller'; ws._id = id;
@@ -132,6 +156,7 @@ export function createBroker(opts = {}) {
                 for (const name of resources.keys()) ensureHolder(name);
                 safeSend(ws, { type: T.WELCOME, protocol: PROTOCOL_VERSION, assignedId: id, role: 'controller', features: ['exclusive', 'concurrent', 'leases'] });
                 broadcastRoster();
+                audit({ type: 'connect', role: 'controller', id, label: msg.label || id });
                 logger(`controller registered: "${id}" (${msg.label || ''})`);
             }
             return;
@@ -139,18 +164,32 @@ export function createBroker(opts = {}) {
 
         // --- Controller issues a command ---
         if (ws._role === 'controller' && msg.type === T.COMMAND) {
+            const deny = (error, reason) => {
+                safeSend(ws, { type: T.RESULT, id: msg.id, ok: false, error });
+                audit({ type: 'denied', controller: ws._id, resource: msg.resource, action: msg.action, reason });
+            };
             const resource = pickResource(msg.resource);
             if (!resource) {
-                safeSend(ws, { type: T.RESULT, id: msg.id, ok: false, error: 'no such resource (or none connected / ambiguous — name it)' });
+                deny('no such resource (or none connected / ambiguous — name it)', 'no-resource');
                 return;
             }
             if (resource.mode === MODES.EXCLUSIVE && holders.get(resource.name) !== ws._id) {
-                safeSend(ws, { type: T.RESULT, id: msg.id, ok: false, error: 'not the active controller for this resource — select it to take control' });
+                deny('not the active controller for this resource — select it to take control', 'not-active');
+                return;
+            }
+            // Per-command capability gate (read-only controllers, allow-lists, etc.)
+            let allowed = true;
+            try {
+                allowed = await authorize({ controllerId: ws._id, action: msg.action, resource: resource.name, params: msg.params, meta: controllers.get(ws._id)?.meta });
+            } catch { allowed = false; }
+            if (!allowed) {
+                deny(`action "${msg.action}" not permitted for this controller`, 'unauthorized');
                 return;
             }
             const rid = `rt-${ridSeq++}`;
             pending.set(rid, { ctrlWs: ws, origId: msg.id });
             safeSend(resource.ws, { type: T.COMMAND, id: rid, action: msg.action, params: msg.params, scope: msg.scope, controller: ws._id });
+            audit({ type: 'command', controller: ws._id, resource: resource.name, action: msg.action, scope: msg.scope });
             return;
         }
 
@@ -177,6 +216,7 @@ export function createBroker(opts = {}) {
                 safeSend(ws, { type: T.LEASE, resource: resource.name, granted: false, holder: holders.get(resource.name) });
             }
             broadcastRoster();
+            audit({ type: 'lease', resource: resource.name, holder: holders.get(resource.name), via: msg.type });
             return;
         }
 
@@ -186,6 +226,7 @@ export function createBroker(opts = {}) {
             if (name && resources.has(name) && (msg.controllerId === null || controllers.has(msg.controllerId))) {
                 holders.set(name, msg.controllerId);
                 broadcastRoster();
+                audit({ type: 'lease', resource: name, holder: msg.controllerId, via: 'select' });
             }
             return;
         }
@@ -205,11 +246,16 @@ export function createBroker(opts = {}) {
                 }
             }
             broadcastRoster();
+            audit({ type: 'disconnect', role: 'controller', id: ws._id });
             logger(`controller gone: "${ws._id}"`);
         } else if (ws._role === 'resource' && ws._resourceName) {
             resources.delete(ws._resourceName);
             broadcastRoster();
+            audit({ type: 'disconnect', role: 'resource', id: ws._resourceName });
             logger(`resource gone: "${ws._resourceName}"`);
+        } else if (ws._role === 'observer') {
+            observers.delete(ws);
+            logger('observer disconnected');
         }
     }
 
@@ -226,6 +272,7 @@ export function createBroker(opts = {}) {
             if (heartbeat) clearInterval(heartbeat);
             for (const c of controllers.values()) { try { c.ws.terminate(); } catch {} }
             for (const r of resources.values()) { try { r.ws.terminate(); } catch {} }
+            for (const o of observers) { try { o.terminate(); } catch {} }
             wss.close(() => res());
         })
     };

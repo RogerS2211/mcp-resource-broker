@@ -12,7 +12,7 @@ All messages are JSON objects with a `type` field.
 |---|---|---|
 | **controller** | An MCP server inside an agent session (Claude, Cursor, …) | WebSocket client |
 | **resource** | The controllable thing (browser extension, app, device) | WebSocket client |
-| *(observer)* | *Reserved for future dashboards (read-only roster)* | — |
+| **observer** | A dashboard / CLI: read-only roster + live audit stream; may send `select` | WebSocket client |
 
 The **broker** is the only WebSocket *server*. This is the key inversion vs.
 typical browser-MCP tools, where each agent's server owns the port and they
@@ -103,6 +103,27 @@ A resource renders its picker from `roster.controllers` + `roster.holders` and
 calls `select` when the user chooses — exactly the popup flow in the reference
 extension.
 
+## Capability scoping (authorize)
+
+Independently of exclusive/concurrent gating, the broker can apply a per-command
+policy via an `authorize({ controllerId, action, resource, params, meta })` hook
+(default: allow all). Returning `false` denies the command before it reaches the
+resource — enabling read-only controllers, action allow-lists, or per-resource
+restrictions. Denials produce a `result` with `ok:false` and an audit event.
+
+## Audit stream
+
+The broker emits an audit event for every command, denial, lease change, and
+connect/disconnect — delivered to the `onAudit(event)` callback and pushed to any
+connected observers as `{ "type": "audit", "event": {...} }`.
+
+```jsonc
+{ "type": "audit", "event": {
+  "ts": 1717538400000, "type": "command",
+  "controller": "ctrl-1", "resource": "browser", "action": "click" } }
+// event.type is one of: connect | disconnect | command | denied | lease
+```
+
 ## Liveness & lease TTL
 
 Independently of the application-level `ping`/`pong` above, the broker sends a
@@ -115,7 +136,6 @@ hold a resource to roughly one heartbeat interval.
 
 ## Not in v1 (roadmap)
 
-- Observer role and a metrics/audit stream.
-- Per-controller capability scoping (read-only, allowed actions/domains) enforced
-  broker-side.
-- Non-localhost transport hardening (TLS, real auth).
+- Lease resumption across reconnects (a controller reclaiming its prior lease by
+  stable id).
+- Non-localhost transport hardening (TLS, real auth beyond the localhost default).

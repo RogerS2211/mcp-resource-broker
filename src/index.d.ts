@@ -1,5 +1,5 @@
 export { createBroker } from './broker.js';
-export type { Broker, BrokerOptions, BrokerState, AuthInfo } from './broker.js';
+export type { Broker, BrokerOptions, BrokerState, AuthInfo, AuthorizeInfo, AuditEvent } from './broker.js';
 
 export { BrokerClient } from './node-client.js';
 export type {

@@ -93,6 +93,44 @@ try {
     ok(broker2.state().holders.hb === live.assignedId, 'heartbeat: hung holder dropped, lease reassigned to live controller');
     live.close(); hbRes.close();
     await broker2.close();
+
+    // 10. authorize hook + audit stream + observer role. Isolated broker.
+    const auditLog = [];
+    const broker3 = createBroker({
+        port: 8804,
+        heartbeatMs: 0,
+        logger: () => {},
+        onAudit: (e) => auditLog.push(e),
+        // read-only policy: only allow actions starting with "read"
+        authorize: ({ action }) => action.startsWith('read')
+    });
+    await sleep(150);
+    const res3 = new BrokerClient({ url: 'ws://127.0.0.1:8804', role: 'resource', name: 'r3', mode: 'exclusive' });
+    res3.onCommand(async ({ action }) => ({ ok: true, data: action }));
+    await res3.connect();
+    const ctl3 = new BrokerClient({ url: 'ws://127.0.0.1:8804', role: 'controller', label: 'scoped' });
+    await ctl3.connect();
+    await sleep(80);
+
+    const allow = await ctl3.command('read_thing', {}, { resource: 'r3' });
+    ok(allow.ok, 'authorize: permitted action ("read_*") is forwarded');
+    const block = await ctl3.command('delete_thing', {}, { resource: 'r3' });
+    ok(!block.ok && /not permitted/i.test(block.error), 'authorize: disallowed action is denied');
+
+    // Observer sees the roster and live audit events.
+    const obs = new BrokerClient({ url: 'ws://127.0.0.1:8804', role: 'observer' });
+    const obsAudit = [];
+    obs.onAudit((e) => obsAudit.push(e));
+    await obs.connect();
+    await sleep(60);
+    await ctl3.command('read_again', {}, { resource: 'r3' });
+    await sleep(80);
+    ok(obs.roster.controllers.some(c => c.id === ctl3.assignedId), 'observer: roster lists the controller');
+    ok(obsAudit.some(e => e.type === 'command' && e.action === 'read_again'), 'observer: receives live audit events');
+    ok(auditLog.some(e => e.type === 'denied' && e.reason === 'unauthorized'), 'audit: denial recorded via onAudit callback');
+
+    obs.close(); ctl3.close(); res3.close();
+    await broker3.close();
 } catch (e) {
     failures++;
     console.error('Harness error:', e);
