@@ -30,10 +30,17 @@ const DATA_PORT = Number(process.env.ABLETON_ARBITER_PORT || 9877);     // where
 const UPSTREAM_HOST = process.env.ABLETON_HOST || '127.0.0.1';
 const UPSTREAM_PORT = Number(process.env.ABLETON_UPSTREAM_PORT || 9878); // the real Remote Script
 const CONTROL_PORT = Number(process.env.ABLETON_CONTROL_PORT || 9875);   // status/select CLI
+// If the active instance has been idle this long (ms), a request from another
+// instance auto-promotes it — so a zombie from a closed session can't wedge the
+// set. 0 disables (manual `select` only). Override with ABLETON_AUTO_PROMOTE_MS.
+const AUTO_PROMOTE_MS = Number(process.env.ABLETON_AUTO_PROMOTE_MS ?? 10000);
 
 const sub = process.argv[2];
 if (sub === 'status' || sub === 'list') cli({ cmd: 'list' });
-else if (sub === 'select') cli({ cmd: 'select', id: Number(process.argv[3]) });
+else if (sub === 'select') {
+    const arg = process.argv[3];
+    cli({ cmd: 'select', id: arg === 'newest' ? 'newest' : Number(arg) });
+}
 else runServer();
 
 // ---- CLI (status / select) ----
@@ -56,6 +63,7 @@ function cli(msg) {
 }
 function printStatus(s) {
     console.log(`upstream (Ableton :${UPSTREAM_PORT}): ${s.upstream}`);
+    console.log(`auto-promote idle: ${s.autoPromoteMs ? s.autoPromoteMs / 1000 + 's' : 'off'}`);
     console.log('instances:');
     if (!s.instances.length) { console.log('  (none connected)'); return; }
     for (const i of s.instances) console.log(`  ${i.active ? '*' : ' '} [${i.id}] ${i.label}${i.active ? '  <- active' : ''}`);
@@ -68,6 +76,7 @@ function runServer() {
     const pending = [];          // FIFO of client ids awaiting an upstream response
     let nextId = 1;
     let activeId = null;
+    let lastActiveActivity = 0;  // ms timestamp of the active instance's last command
 
     let up = null, upBuf = '', upReady = false, upConnecting = false;
 
@@ -94,17 +103,24 @@ function runServer() {
             if (c) c.sock.write(JSON.stringify({ status: 'error', message }));
         }
     }
+    function activeAlive() {
+        const c = activeId != null ? clients.get(activeId) : null;
+        return !!(c && !c.sock.destroyed);
+    }
     function ensureActive() {
         if (activeId != null && clients.has(activeId)) return;
-        activeId = clients.size ? Math.min(...clients.keys()) : null;
+        activeId = clients.size ? Math.max(...clients.keys()) : null; // prefer the newest session
     }
     connectUpstream();
 
     const dataServer = net.createServer((sock) => {
         const id = nextId++;
         const label = `instance-${id} (:${sock.remotePort})`;
+        sock.setKeepAlive(true, 15000); // reap genuinely dead sockets sooner
         clients.set(id, { sock, label, buf: '' });
-        if (activeId == null) activeId = id;
+        // Take over if nothing is active or the active socket is dead (crashed
+        // session). Idle take-over of a still-connected zombie happens on request.
+        if (activeId == null || !activeAlive()) { activeId = id; lastActiveActivity = Date.now(); }
         log(`client connected ${label}${activeId === id ? ' (active)' : ''}`);
 
         sock.on('data', (d) => {
@@ -113,12 +129,28 @@ function runServer() {
             let obj;
             try { obj = JSON.parse(client.buf); } catch { return; }
             client.buf = '';
+
+            // Auto-promotion: if this isn't the active instance but the active one
+            // is gone or has been idle past the threshold (e.g. a zombie from a
+            // closed session), take over instead of rejecting. Triggering here, on
+            // the request itself, means the call that would have been rejected
+            // simply succeeds — no manual select, no connection-close race.
+            if (id !== activeId) {
+                const idleMs = Date.now() - lastActiveActivity;
+                if (!activeAlive() || (AUTO_PROMOTE_MS > 0 && idleMs > AUTO_PROMOTE_MS)) {
+                    log(`auto-promoted ${label} (previous active ${activeAlive() ? `idle ${Math.round(idleMs / 1000)}s` : 'gone'})`);
+                    activeId = id;
+                }
+            }
+
             if (id === activeId) {
                 if (!upReady) { connectUpstream(); sock.write(JSON.stringify({ status: 'error', message: `Ableton not reachable on :${UPSTREAM_PORT} (is Live running with the Remote Script on that port?)` })); return; }
+                lastActiveActivity = Date.now();
                 pending.push(id);
                 up.write(JSON.stringify(obj));
             } else {
-                sock.write(JSON.stringify({ status: 'error', message: `Not the active Ableton instance (${label}). Run: node arbiter.js select ${id}` }));
+                const hint = AUTO_PROMOTE_MS > 0 ? ` (or it auto-activates once the active instance is idle ${Math.round(AUTO_PROMOTE_MS / 1000)}s)` : '';
+                sock.write(JSON.stringify({ status: 'error', message: `Not the active Ableton instance (${label}). Run: node arbiter.js select ${id}${hint}` }));
             }
         });
         sock.on('close', () => {
@@ -143,9 +175,13 @@ function runServer() {
             while ((i = cbuf.indexOf('\n')) >= 0) {
                 const line = cbuf.slice(0, i); cbuf = cbuf.slice(i + 1);
                 let msg; try { msg = JSON.parse(line); } catch { continue; }
-                if (msg.cmd === 'select' && clients.has(msg.id)) { activeId = msg.id; log(`active -> ${clients.get(msg.id).label}`); }
+                if (msg.cmd === 'select') {
+                    const target = msg.id === 'newest' ? (clients.size ? Math.max(...clients.keys()) : null) : msg.id;
+                    if (target != null && clients.has(target)) { activeId = target; lastActiveActivity = Date.now(); log(`active -> ${clients.get(target).label}`); }
+                }
                 sock.write(JSON.stringify({
                     upstream: upReady ? 'ready' : 'down',
+                    autoPromoteMs: AUTO_PROMOTE_MS,
                     instances: [...clients.entries()].map(([cid, c]) => ({ id: cid, label: c.label, active: cid === activeId }))
                 }) + '\n');
             }

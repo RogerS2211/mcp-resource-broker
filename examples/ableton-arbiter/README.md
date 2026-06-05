@@ -46,11 +46,20 @@ connects to `:9877`, which is now the arbiter):
 
 **4. Pick the active session:**
 ```bash
-node arbiter.js status        # list connected instances + which is active
-node arbiter.js select 2      # hand control to instance 2
+node arbiter.js status         # list connected instances + which is active
+node arbiter.js select 2       # hand control to instance 2
+node arbiter.js select newest  # hand control to the most recently connected
 ```
 The first instance to connect is auto-selected. Inactive instances get an
 immediate `"not the active Ableton instance"` error instead of corrupting state.
+
+**Auto-promotion (zombie recovery).** If the active instance goes idle past a
+threshold (default **10s**) — e.g. a leftover `ableton-mcp` from a closed session
+that still holds the connection — the next request from another instance simply
+**takes over**, so a stale session can't wedge the set and you don't have to race
+to `select` it. A still-busy active session is never stolen from. Tune or disable
+with `ABLETON_AUTO_PROMOTE_MS` (`0` = manual `select` only). Dead sockets (crashed
+sessions) are handed over immediately via TCP keepalive.
 
 ## Test (no Ableton required)
 
