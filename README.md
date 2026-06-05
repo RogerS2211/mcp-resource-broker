@@ -78,6 +78,12 @@ npm run example  # narrated two-session demo (no browser needed)
 is a complete, runnable demo — a Chrome extension + a real MCP server — where two
 agent sessions share one browser and you pick the active one from the popup.
 
+**Applying the pattern to a third-party server:**
+[`examples/ableton-arbiter/`](./examples/ableton-arbiter) is a protocol-transparent
+TCP arbiter that lets [ahujasid/ableton-mcp](https://github.com/ahujasid/ableton-mcp)
+run at user scope across multiple sessions — same arbitration idea, no changes to
+the upstream server.
+
 ## Run the broker
 
 ```bash
