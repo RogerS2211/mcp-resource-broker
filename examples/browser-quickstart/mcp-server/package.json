@@ -1,0 +1,16 @@
+{
+  "name": "broker-quickstart-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Example MCP server that drives a browser extension through the broker.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "mcp-resource-broker": "file:../../..",
+    "zod": "^3.25.0"
+  }
+}

@@ -43,6 +43,10 @@ npm test       # end-to-end: arbitration, hand-off, concurrent routing, auto-res
 npm run example  # narrated two-session demo (no browser needed)
 ```
 
+**Want the real thing?** [`examples/browser-quickstart/`](./examples/browser-quickstart)
+is a complete, runnable demo — a Chrome extension + a real MCP server — where two
+agent sessions share one browser and you pick the active one from the popup.
+
 ## Run the broker
 
 ```bash

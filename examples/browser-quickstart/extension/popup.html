@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font: 13px system-ui, sans-serif; width: 290px; padding: 12px; }
+        h1 { font-size: 14px; margin: 0 0 8px; }
+        #status { color: #666; margin-bottom: 8px; }
+        .row { display: flex; gap: 7px; align-items: baseline; padding: 4px 0; cursor: pointer; }
+        code { font-size: 11px; color: #888; word-break: break-all; }
+        button { margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <h1>Active MCP session</h1>
+    <div id="status">…</div>
+    <div id="list"></div>
+    <button id="refresh">Refresh</button>
+    <script src="popup.js"></script>
+</body>
+</html>

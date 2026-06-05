@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "MCP Resource Broker — Quickstart",
+  "version": "0.1.0",
+  "description": "Demo: let multiple AI sessions share control of this browser via the broker.",
+  "permissions": ["tabs", "alarms"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "MCP broker — pick active session"
+  }
+}
