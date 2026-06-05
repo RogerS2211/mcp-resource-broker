@@ -70,9 +70,10 @@ instance reaches Ableton and that `select` switches control.
 
 ## Caveats
 
-- **Not yet tested against real Ableton Live** — the logic is validated with a
-  mock that mirrors the Remote Script's framing (buffered JSON, parse-whole-buffer,
-  synchronous request/response). Verify the live leg on your machine.
+- **Confirmed against real Ableton Live** for passthrough — a session reaches Live
+  through the arbiter (Remote Script moved to `:9878`, arbiter on `:9877`). The
+  arbitration/selection logic is additionally covered by `test.mjs` (mock Remote
+  Script mirroring the buffered-JSON framing).
 - Switch the active instance when it's **idle** (between commands). The arbiter
   routes one synchronous request/response at a time per the protocol.
 - Like the Remote Script's own parser, framing assumes one JSON object per
