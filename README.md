@@ -6,6 +6,10 @@
 
 **Let many AI/agent sessions safely share one stateful resource — with active-instance arbitration instead of collisions.**
 
+<!-- TODO: drop a demo GIF/asciinema here showing two sessions + switching control in the popup.
+     Record with the examples/browser-quickstart flow. -->
+
+
 Most browser-MCP tools (Browser MCP, mcp-chrome, browser-control-mcp, even
 Chrome DevTools MCP) assume **one agent**. Open a second editor window or agent
 session and they collide on a single port/connection — the resource silently
@@ -16,6 +20,33 @@ the response back to that same caller.
 
 > A browser extension is just the first resource type — the pattern fits any
 > singleton stateful resource (a desktop app, a device, a single DB session).
+
+## How it compares
+
+There are two different concurrency problems, and most tools only touch the first:
+**(a)** one agent driving many tabs/browsers in parallel, and **(b)** many *separate
+agent sessions* contending for **one** browser, with a way to choose which is in
+control. This package is about **(b)** — and adds **(a)** via concurrent mode.
+
+| Tool | Multiple agent sessions on one browser | Choose which session controls it | Approach |
+|---|---|---|---|
+| [Browser MCP](https://browsermcp.io/) | ✗ one connection for the server's lifetime | ✗ | extension ↔ server socket |
+| [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp) | ~ subagents share one server, routed per-tab; cross-session is an [open request](https://github.com/ChromeDevTools/chrome-devtools-mcp/issues/926) | ✗ | CDP / Puppeteer |
+| [mcp-chrome](https://github.com/hangwin/mcp-chrome) | ✗ single native-messaging host, no arbitration | ✗ | native messaging |
+| **mcp-resource-broker** | ✓ any number, via a shared broker | ✓ explicit select / lease | broker (this) |
+
+*(Comparison reflects these projects as of June 2026; the browser-control feature
+sets overlap — the distinction here is specifically multi-session arbitration.)*
+
+## Why a broker?
+
+The usual design makes the **agent's MCP server** the socket server the extension
+connects to. With one agent that's fine. With several, each agent spins up its own
+server on the same port — the first wins, the rest silently fail, and the extension
+is stuck talking to whichever started first. Inverting it — one **broker** owns the
+port; every agent session *and* the extension connect to it as clients — removes the
+collision and creates a single place to **arbitrate** who's in control, **scope**
+what each session may do, and **audit** every action.
 
 ## Concepts
 
