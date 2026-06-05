@@ -67,7 +67,13 @@ sessions) are handed over immediately via TCP keepalive.
 node test.mjs
 ```
 Spins up a mock Remote Script + two mock clients and asserts that only the active
-instance reaches Ableton and that `select` switches control.
+instance reaches Ableton, that `select` switches control, and that an idle active
+is auto-superseded.
+
+To *see* the stale-active warning rendered in `status` (no Ableton needed):
+```bash
+node demo-zombie.mjs
+```
 
 ## Ports
 
