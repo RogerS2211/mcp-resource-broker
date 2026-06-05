@@ -104,6 +104,9 @@ try {
     const y = await mkClient(A2.data);   // id 2
     await sleep(450);                    // let the active (x) go idle past 300ms
 
+    const zsnap = await control(A2.ctrl, { cmd: 'list' });
+    ok(zsnap.likelyZombie === true && zsnap.instances.find(i => i.active).id === 1, 'status flags the idle active as a likely zombie');
+
     const ry = await request(y, { type: 'get_session_info' });
     ok(ry.status === 'success', 'auto-promote: idle active is superseded by a live request');
     const snap2 = await control(A2.ctrl, { cmd: 'list' });

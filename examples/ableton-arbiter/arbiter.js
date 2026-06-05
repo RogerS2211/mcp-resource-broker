@@ -64,9 +64,17 @@ function cli(msg) {
 function printStatus(s) {
     console.log(`upstream (Ableton :${UPSTREAM_PORT}): ${s.upstream}`);
     console.log(`auto-promote idle: ${s.autoPromoteMs ? s.autoPromoteMs / 1000 + 's' : 'off'}`);
+    if (s.likelyZombie) {
+        const others = s.instances.length - 1;
+        console.log(`\n  ⚠ active instance looks STALE — idle ${Math.round(s.activeIdleMs / 1000)}s while ${others} other(s) wait.`);
+        console.log(`    It auto-supersedes on the next command, or run: node arbiter.js select newest\n`);
+    }
     console.log('instances:');
     if (!s.instances.length) { console.log('  (none connected)'); return; }
-    for (const i of s.instances) console.log(`  ${i.active ? '*' : ' '} [${i.id}] ${i.label}${i.active ? '  <- active' : ''}`);
+    for (const i of s.instances) {
+        const idle = i.active && i.idleMs != null ? `  (idle ${Math.round(i.idleMs / 1000)}s)` : '';
+        console.log(`  ${i.active ? '*' : ' '} [${i.id}] ${i.label}${i.active ? '  <- active' : ''}${idle}`);
+    }
 }
 
 // ---- Arbiter server ----
@@ -179,10 +187,16 @@ function runServer() {
                     const target = msg.id === 'newest' ? (clients.size ? Math.max(...clients.keys()) : null) : msg.id;
                     if (target != null && clients.has(target)) { activeId = target; lastActiveActivity = Date.now(); log(`active -> ${clients.get(target).label}`); }
                 }
+                const haveActive = activeId != null && clients.has(activeId);
+                const activeIdleMs = haveActive ? Date.now() - lastActiveActivity : null;
+                const others = clients.size - (haveActive ? 1 : 0);
+                const likelyZombie = activeAlive() && AUTO_PROMOTE_MS > 0 && activeIdleMs != null && activeIdleMs > AUTO_PROMOTE_MS && others > 0;
                 sock.write(JSON.stringify({
                     upstream: upReady ? 'ready' : 'down',
                     autoPromoteMs: AUTO_PROMOTE_MS,
-                    instances: [...clients.entries()].map(([cid, c]) => ({ id: cid, label: c.label, active: cid === activeId }))
+                    activeIdleMs,
+                    likelyZombie,
+                    instances: [...clients.entries()].map(([cid, c]) => ({ id: cid, label: c.label, active: cid === activeId, idleMs: cid === activeId ? activeIdleMs : null }))
                 }) + '\n');
             }
         });
